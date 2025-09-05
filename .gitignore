@@ -1,0 +1,4 @@
+secrets/
+# Ignorar contenido de /logs pero no la carpeta
+/logs/*
+!/logs/.gitkeep
