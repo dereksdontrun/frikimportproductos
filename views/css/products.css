@@ -1,0 +1,327 @@
+/* Inputs */
+.form-control.input-sm {
+  display: inline-block;
+  max-width: 250px;
+  font-size: 13px;
+  padding: 4px 6px;
+}
+
+/* Switch tipo Prestashop */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 220px;
+  background: #d3d3d3;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.switch input {
+  display: none;
+}
+
+.switch label {
+  float: left;
+  width: 50%;
+  text-align: center;
+  line-height: 24px;
+  cursor: pointer;
+  z-index: 2;
+  position: relative;
+  font-size: 12px;
+}
+
+.switch .slide-button {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background: #00aff0;
+  transition: left 0.3s ease;
+  z-index: 1;
+}
+
+.switch input[id$="_on"]:checked ~ .slide-button {
+  left: 0;
+}
+
+.switch input[id$="_off"]:checked ~ .slide-button {
+  left: 50%;
+}
+
+/* Panel sticky */
+.filtros-sticky {
+  position: sticky !important;
+  top: 170px; /* ajusta según altura de tu header */
+  z-index: 10;
+  background: #fff;
+  padding: 10px 15px;
+  border-bottom: 1px solid #ddd;
+}
+
+/* GRID principal del form */
+#formFiltros.form-grid {
+  display: grid;
+  grid-auto-flow: column;             /* añadir columnas automáticamente */
+  grid-auto-columns: 230px;           /* ancho base de cada columna */
+  justify-content: center;            /* centrar todo el bloque */
+  gap: 15px 40px;                     /* espacio entre filas y columnas */
+  align-items: start;                 /* alinear arriba */
+}
+
+#formFiltros .form-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 10px;
+}
+
+#formFiltros label {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+#formFiltros select,
+#formFiltros input[type="text"] {
+  max-width: 250px;
+}
+
+#formFiltros .switch {
+  margin-top: 4px;
+}
+
+#formFiltros .acciones {
+  /* grid-column: 1 / -1;                ocupa todas las columnas */
+  text-align: center;
+  margin-top: 60px;
+}
+
+/* overlay para mostrar pantalla de carga mientras se trae la info al front */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.4); /* tono grisáceo */
+  display: none;              /* oculto por defecto */
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  z-index: 9999;              /* encima de todo */
+  color: #fff;
+  font-size: 16px;
+}
+
+.loading-overlay .spinner {
+  border: 6px solid #f3f3f3;  /* gris claro */
+  border-top: 6px solid #3498db; /* azul */
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 10px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+
+/* ======== TABLA DE PRODUCTOS ======== */
+.productos-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  /* table-layout: fixed; */
+}
+
+.productos-tabla th,
+.productos-tabla td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #ddd;
+  vertical-align: middle !important;
+  text-align: center;
+}
+
+.productos-tabla th {
+  background-color: #f0f0f0;
+  font-weight: bold;
+  /* text-align: center; */
+}
+
+/* Fondo alterno filas */
+.producto-row:nth-child(even) {
+  background-color: #fafafa;
+}
+.producto-row:nth-child(odd) {
+  background-color: #ffffff;
+}
+
+/* ======== COLUMNA IMAGEN / CARRUSEL ======== */
+.col-carousel {
+  max-width: 150px;
+  max-height: 150px;  
+}
+
+.carousel {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  overflow: hidden;
+  margin: auto;
+}
+
+.carousel-img {
+  width: auto;
+  height: 140px;
+  max-width: 100%;
+  display: none;
+  object-fit: contain;
+}
+
+.carousel-img.active {
+  display: block;
+}
+
+.carousel button {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.carousel button.prev { left: 2px; }
+.carousel button.next { right: 2px; }
+
+/* Columnas */
+.col-checkbox {
+  width: 20px;    
+}
+.col-nombre {
+  width: 15%;    
+}
+.col-proveedor {
+  width: 8%;    
+}
+.col-referencia {
+  width: 6%;    
+}
+.col-ean {
+  width: 6%;    
+}
+.col-descripcion {
+  width: 22%;    
+}
+.col-manufacturer {
+  width: 8%;    
+}
+.col-coste {
+  width: 6%;    
+}
+.col-disponibilidad {
+  width: 3%;    
+}
+.col-coincidencias {
+  width: 5%;    
+}
+.col-otros_proveedores {
+  width: 5%;    
+}
+.col-estado {
+  width: 6%;    
+}
+.col-last_update {
+  width: 5%;    
+}
+.col-acciones {
+  width: 100px;    
+}
+
+/* ======== COLUMNA DESCRIPCIÓN ======== */
+.div-col-descripcion {  
+  width: 95%;
+  height: 130px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;  
+}
+
+/* ======== COLUMNA PROVEEDOR ======== */
+.productos-tabla td a {
+  color: #0073e6;
+  text-decoration: none;
+}
+.productos-tabla td a:hover {
+  text-decoration: underline;
+}
+
+/* ======== COLUMNA COSTE ======== */
+/* .productos-tabla td:nth-child(9) {
+  text-align: right;
+  white-space: nowrap;
+} */
+
+/* ======== BOTÓN ACCIONES ======== */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-btn {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  right: 0;
+  background: #fff;
+  min-width: 120px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  z-index: 10;
+}
+
+.dropdown-content button {
+  display: block;
+  width: 100%;
+  border: none;
+  padding: 6px 10px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+}
+
+.dropdown-content button:hover {
+  background: #f5f5f5;
+}
+
+.dropdown:hover .dropdown-content {
+  display: block;
+}
+
+/* ======== SCROLL BARRAS ======== */
+.col-descripcion::-webkit-scrollbar {
+  width: 6px;
+}
+.col-descripcion::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+.col-descripcion::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+
