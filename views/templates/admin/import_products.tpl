@@ -46,6 +46,25 @@
       </span>
     </div>
 
+    <!-- Ordenar por coste, y aplicar rango de coste -->
+    <div class="form-group coste_rango">
+      <label>Rango de coste (€)</label>
+      <div style="display:flex; gap:5px;">
+        <input type="number" name="coste_min" class="form-control input-sm" placeholder="mín" step="0.01" min="0">
+        <input type="number" name="coste_max" class="form-control input-sm" placeholder="máx" step="0.01" min="0">
+      </div>
+    
+      <br><br>
+
+      <label>Ordenar por coste</label>
+      <select name="orden_coste" class="form-control input-sm">
+        <option value="">-- Sin orden --</option>
+        <option value="asc">Menor a mayor</option>
+        <option value="desc">Mayor a menor</option>
+      </select>
+    </div>
+
+
     <!-- Estado y select numero-->
     <div class="form-group estado_mostrar">
       <label for="estado">Estado productos:</label>

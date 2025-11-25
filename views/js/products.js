@@ -99,13 +99,19 @@ document.addEventListener('DOMContentLoaded', () => {
         .filter(url => url && url.trim() !== "")
         .filter((url, idx, arr) => arr.indexOf(url) === idx); // elimina duplicados exactos
 
-      // carrusel
+      // carrusel,. Añadimos a <img> onerror, para que no muestre imágenes rotas o no existentes, si son demasiado "pequeñas" o tamaño anómalo tambien (onload)
       let carrusel = '';
       if (imagenes.length > 0) {
         carrusel = `
           <div class="carousel" data-idx="${idx}">
             ${imagenes.map((url, i) => `
-              <img src="${url}" class="carousel-img ${i === 0 ? 'active' : ''}">
+              <img 
+                src="${url}" 
+                class="carousel-img ${i === 0 ? 'active' : ''}" 
+                title="${p.id_productos_proveedores}"
+                onerror="this.remove();"
+                onload="if(this.naturalWidth <= 40 && this.naturalHeight <= 40){ this.remove(); }"
+              >
             `).join('')}
             ${imagenes.length > 1 ? `
               <button class="prev">&lt;</button>
@@ -139,22 +145,27 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-estado">${p.estado}</td>
           <td class="col-last_update">${p.last_update_info}</td>
           <td class="col-acciones">
-            <div class="dropdown">
-              <button class="dropdown-btn">Acciones</button>
-              <div class="dropdown-content">
-                ${p.estado.toLowerCase() === 'creado' ? '' : `
-                  <button class="accion-crear" data-id="${p.id_productos_proveedores}">Crear</button>
-                `}
-                ${p.estado.toLowerCase() === 'ignorado' || p.estado.toLowerCase() === 'creado' ? '' : (
-          p.estado.toLowerCase() === 'encolado'
-            ? `<button class="accion-desencolar" data-id="${p.id_productos_proveedores}">Desencolar</button>`
-            : `<button class="accion-encolar" data-id="${p.id_productos_proveedores}">Encolar</button>`
-        )}
-                ${p.estado.toLowerCase() === 'ignorado' ? '' : `
-                  <button class="accion-ignorar" data-id="${p.id_productos_proveedores}">Ignorar</button>
-                `}
+            <!-- según el estado de producto, deshabilitamos el votón de acciones u ofrecemos diferentes opciones -->
+            ${['creado', 'eliminado', 'procesando'].includes(p.estado.toLowerCase()) ? `
+              <button class="dropdown-btn disabled" disabled>Acciones</button>
+            ` : `
+              <div class="dropdown">
+                <button class="dropdown-btn">Acciones</button>
+                <div class="dropdown-content">
+                  ${p.estado.toLowerCase() === 'ignorado' ? `
+                    <button class="accion-designorar" data-id="${p.id_productos_proveedores}">Designorar</button>
+                  ` : p.estado.toLowerCase() === 'encolado' ? `
+                    <button class="accion-desencolar" data-id="${p.id_productos_proveedores}">Desencolar</button>
+                    <button class="accion-ignorar" data-id="${p.id_productos_proveedores}">Ignorar</button>
+                  ` : p.estado.toLowerCase() === 'pendiente' ? `
+                    <button class="accion-crear" data-id="${p.id_productos_proveedores}">Crear</button>
+                    <button class="accion-encolar" data-id="${p.id_productos_proveedores}">Encolar</button>
+                    <button class="accion-ignorar" data-id="${p.id_productos_proveedores}">Ignorar</button>
+                  ` : ''}
+                </div>
               </div>
-            </div>
+            `}
+
           </td>
         </tr>
       `;
@@ -165,6 +176,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // === CARRUSEL ===
+    document.querySelectorAll('.carousel').forEach(carousel => {
+      let current = 0;
+
+      const showImage = (carousel, idx) => {
+        const imgs = [...carousel.querySelectorAll('.carousel-img')];
+        if (imgs.length === 0) return;
+
+        // Aseguramos que idx nunca se salga del rango real
+        idx = Math.max(0, Math.min(idx, imgs.length - 1));
+        imgs.forEach((img, i) => img.classList.toggle('active', i === idx));
+
+        return idx; // devolvemos el nuevo índice válido
+      };
+
+      const prev = carousel.querySelector('.prev');
+      const next = carousel.querySelector('.next');
+
+      if (prev) {
+        prev.addEventListener('click', () => {
+          const imgs = [...carousel.querySelectorAll('.carousel-img')];
+          if (imgs.length === 0) return;
+          current = (current - 1 + imgs.length) % imgs.length;
+          current = showImage(carousel, current);
+        });
+      }
+
+      if (next) {
+        next.addEventListener('click', () => {
+          const imgs = [...carousel.querySelectorAll('.carousel-img')];
+          if (imgs.length === 0) return;
+          current = (current + 1) % imgs.length;
+          current = showImage(carousel, current);
+        });
+      }
+
+      // Mostrar la primera imagen válida al iniciar
+      showImage(carousel, current);
+    });
+
+    /* Versión original del funcionamiento del carrusel. Si metemos x imágenes con url creada sin sber si existe, la última imagen la muestra en blanco al quitar active a la actual sin existir la siguiente
     document.querySelectorAll('.carousel').forEach(carousel => {
       const imgs = carousel.querySelectorAll('.carousel-img');
       let current = 0;
@@ -189,6 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
     });
+    */
   } //Fin renderizar productos
 
   function mostrarOverlay() {
@@ -210,6 +262,13 @@ document.addEventListener('DOMContentLoaded', () => {
         success: 'Producto marcado como ignorado',
         error: 'Error al ignorar',
         nuevoEstado: 'Ignorado'
+      },
+      'accion-designorar': {
+        action: 'DesignorarProducto',
+        confirm: '¿Seguro que quieres DES IGNORAR este producto?',
+        success: 'Producto designorado correctamente',
+        error: 'Error al designorar el producto',
+        nuevoEstado: 'Pendiente'
       },
       'accion-encolar': {
         action: 'EncolarProducto',
@@ -260,39 +319,108 @@ document.addEventListener('DOMContentLoaded', () => {
             // fila.querySelectorAll('.dropdown-content button').forEach(btn => btn.disabled = true);
             // localizar la fila del producto
             const fila = e.target.closest('tr');
-            if (fila) {
-              // actualizar estado según acción            
-              fila.querySelector('.col-estado').textContent = conf.nuevoEstado;
+            // if (fila) {
+            //   // actualizar estado según acción            
+            //   fila.querySelector('.col-estado').textContent = conf.nuevoEstado;
 
-              // alternar encolar <-> desencolar
-              if (clase === 'accion-encolar') {
-                e.target.textContent = 'Desencolar';
-                e.target.classList.remove('accion-encolar');
-                e.target.classList.add('accion-desencolar');
-              } else if (clase === 'accion-desencolar') {
-                e.target.textContent = 'Encolar';
-                e.target.classList.remove('accion-desencolar');
-                e.target.classList.add('accion-encolar');
+            //   // alternar encolar <-> desencolar
+            //   if (clase === 'accion-encolar') {
+            //     e.target.textContent = 'Desencolar';
+            //     e.target.classList.remove('accion-encolar');
+            //     e.target.classList.add('accion-desencolar');
+            //   } else if (clase === 'accion-desencolar') {
+            //     e.target.textContent = 'Encolar';
+            //     e.target.classList.remove('accion-desencolar');
+            //     e.target.classList.add('accion-encolar');
+            //   } else {
+            //     // para ignorar/crear se bloquea el botón
+            //     e.target.disabled = true;
+            //   }
+
+            //   // habilitar/deshabilitar checkbox según estado
+            //   const estado = conf.nuevoEstado.toLowerCase();
+            //   const chk = fila.querySelector('.check-producto');
+
+            //   if (chk) {
+            //     if (['ignorado', 'creado', 'encolado'].includes(estado)) {
+            //       // bloquear el check
+            //       chk.disabled = true;
+            //       chk.checked = false; // opcional: desmarcarlo si estaba marcado
+            //     } else if (estado === 'pendiente') {
+            //       // volver a habilitar
+            //       chk.disabled = false;
+            //     }
+            //   }
+            // }
+            if (!fila) return;
+
+            // Nuevo estado devuelto por el backend o por configuración
+            const nuevoEstado = (res.nuevoEstado || conf.nuevoEstado).toLowerCase();
+            fila.querySelector('.col-estado').textContent = nuevoEstado.charAt(0).toUpperCase() + nuevoEstado.slice(1);
+
+            // Habilitar/deshabilitar el checkbox según estado
+            const chk = fila.querySelector('.check-producto');
+            if (chk) {
+              if (['ignorado', 'creado', 'encolado', 'eliminado', 'procesando'].includes(nuevoEstado)) {
+                chk.disabled = true;
+                chk.checked = false;
               } else {
-                // para ignorar/crear se bloquea el botón
-                e.target.disabled = true;
-              }
-
-              // habilitar/deshabilitar checkbox según estado
-              const estado = conf.nuevoEstado.toLowerCase();
-              const chk = fila.querySelector('.check-producto');
-
-              if (chk) {
-                if (['ignorado', 'creado', 'encolado'].includes(estado)) {
-                  // bloquear el check
-                  chk.disabled = true;
-                  chk.checked = false; // opcional: desmarcarlo si estaba marcado
-                } else if (estado === 'pendiente') {
-                  // volver a habilitar
-                  chk.disabled = false;
-                }
+                chk.disabled = false;
               }
             }
+
+            // === Regenerar las acciones del botón ===
+            const colAcciones = fila.querySelector('.col-acciones');
+            if (colAcciones) {
+              let accionesHTML = '';
+
+              switch (nuevoEstado) {
+                case 'ignorado':
+                  accionesHTML = `
+                    <div class="dropdown">
+                      <button class="dropdown-btn">Acciones</button>
+                      <div class="dropdown-content">
+                        <button class="accion-designorar" data-id="${id}">Designorar</button>
+                      </div>
+                    </div>`;
+                  break;
+
+                case 'encolado':
+                  accionesHTML = `
+                    <div class="dropdown">
+                      <button class="dropdown-btn">Acciones</button>
+                      <div class="dropdown-content">
+                        <button class="accion-desencolar" data-id="${id}">Desencolar</button>
+                        <button class="accion-ignorar" data-id="${id}">Ignorar</button>
+                      </div>
+                    </div>`;
+                  break;
+
+                case 'pendiente':
+                  accionesHTML = `
+                    <div class="dropdown">
+                      <button class="dropdown-btn">Acciones</button>
+                      <div class="dropdown-content">
+                        <button class="accion-crear" data-id="${id}">Crear</button>
+                        <button class="accion-encolar" data-id="${id}">Encolar</button>
+                        <button class="accion-ignorar" data-id="${id}">Ignorar</button>
+                      </div>
+                    </div>`;
+                  break;
+
+                case 'creado':
+                case 'eliminado':
+                case 'procesando':
+                  accionesHTML = `<button class="dropdown-btn disabled" disabled>Acciones</button>`;
+                  break;
+                
+                default:
+                  accionesHTML = ''; // sin acciones
+              }
+
+              colAcciones.innerHTML = accionesHTML;
+            }
+
           } else {
             alert(conf.error + ': ' + res.message);
           }

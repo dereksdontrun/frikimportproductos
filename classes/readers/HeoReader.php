@@ -7,7 +7,7 @@ class HeoReader extends AbstractCatalogReader
 {
     protected $config;
     protected $logger;
-    protected $pathDescarga;
+    protected $path_descarga;
 
     protected $columnas_catalogo = array(
         0 => "productNumber",
@@ -94,19 +94,19 @@ class HeoReader extends AbstractCatalogReader
     );
 
 
-    public function __construct($idProveedor, LoggerFrik $logger)
+    public function __construct($id_proveedor, LoggerFrik $logger)
     {
         $this->config = Db::getInstance()->getRow('
             SELECT * FROM '._DB_PREFIX_.'import_proveedores 
-            WHERE id_supplier = '.(int)$idProveedor
+            WHERE id_supplier = '.(int)$id_proveedor
         );
 
         if (!$this->config) {
-            throw new Exception('No se encontró configuración para el proveedor con ID '.$idProveedor);
+            throw new Exception('No se encontró configuración para el proveedor con ID '.$id_proveedor);
         }
 
         $this->logger = $logger;
-        $this->pathDescarga = _PS_MODULE_DIR_.'frikimportproductos/import/heo/';
+        $this->path_descarga = _PS_MODULE_DIR_.'frikimportproductos/import/heo/';
     }
 
     /**
@@ -132,16 +132,16 @@ class HeoReader extends AbstractCatalogReader
         }
 
         $archivo = 'catalogo_completo_heo.txt';
-        $rutaArchivo = $this->pathDescarga.$archivo;
+        $ruta_archivo = $this->path_descarga.$archivo;
 
-        if (file_put_contents($rutaArchivo, $response) === false) {
-            $this->logger->log('Error guardando catálogo Heo en '.$rutaArchivo, 'ERROR');
+        if (file_put_contents($ruta_archivo, $response) === false) {
+            $this->logger->log('Error guardando catálogo Heo en '.$ruta_archivo, 'ERROR');
             return false;
         }
 
-        $this->logger->log('Catálogo Heo guardado correctamente en '.$rutaArchivo, 'INFO');
+        $this->logger->log('Catálogo Heo guardado correctamente en '.$ruta_archivo, 'INFO');
 
-        return $rutaArchivo;
+        return $ruta_archivo;
     }
 
     public function checkCatalogo($filename)
@@ -208,16 +208,24 @@ class HeoReader extends AbstractCatalogReader
 
         $ean = trim($campos[35]) ?: '';
 
-        $estado = trim($campos[63]);
-        $disponibilidad = in_array($estado, ['GREEN','YELLOW']) ? 1 : 0;
+        $stock = trim($campos[63]);
+        $disponibilidad = in_array($stock, ['GREEN','YELLOW']) ? 1 : 0;
 
         $precio = str_replace(',','.',trim($campos[61])) ?: 0;
         $packaging_quantity = (int)trim($campos[31]) ?: 1;
         $precio = round($precio / $packaging_quantity, 2);
 
+        //en el caso de Heo, queremos ignorar los productos que no tengan packaging_quantity 1, para poder aplicar esto a otros catálogos (la posibilidad de enviar como ignorado), enviaremos una variable 'ignorar' 1 o 0 desde aquí.
+        $ignorar = $packaging_quantity != 1 ? 1 : 0;
+
         $pvp = str_replace(',','.',trim($campos[59])) ?: 0;
 
-        $peso = trim($campos[16]) ? $campos[16]/1000 : 0.444;
+        //ponemos peso volumétrico, para ello multiplicamos medidas del producto, longitud*anchura*altura y lo dividimos entre 6000000
+        // $peso = trim($campos[16]) ? $campos[16]/1000 : 0.444;
+        $volumetrico = ROUND(((int)trim($campos[9])*(int)trim($campos[10])*(int)trim($campos[11]))/6000000);
+        $peso = $volumetrico ? $volumetrico : 0.444;
+
+        // $imagen_principal = trim($campos[22]) ?: '';
 
         $imagenes = [
             trim($campos[22]) ?: '',
@@ -249,13 +257,11 @@ class HeoReader extends AbstractCatalogReader
 
         $descripcion = $descripcion.$datos_heo.$para_ia;
 
-        // Buscar o crear fabricante
-        $id_manufacturer = $this->getManufacturerId($heo_manufacturer);
-        if (is_null($id_manufacturer)) {
-            $this->logger->log("Error obteniendo fabricante para referencia ".$referencia, 'ERROR');
-
-            return null;
-        }
+        // buscamos el fabricante por su nombre para ver si existe, en cuyo caso obtenemos su id. Si no existe o no hay nombre de fabricante, id_manufacturer queda null y se creará al crear el producto
+        $id_manufacturer = null;
+        if ($heo_manufacturer) {
+            $id_manufacturer = $this->getManufacturerId($heo_manufacturer);
+        }   
         
         return [
             'referencia_proveedor' => $referencia,
@@ -264,50 +270,34 @@ class HeoReader extends AbstractCatalogReader
             'ean'                  => $ean,
             'coste'                => $precio,
             'pvp_sin_iva'          => $pvp,
-            'peso'                 => $peso,
-            'estado'               => $estado,
+            'peso'                 => $peso,            
             'disponibilidad'       => $disponibilidad,
             'description_short'    => $descripcion,
-            'manufacturer'         => $heo_manufacturer,
-            'id_manufacturer'      => $id_manufacturer,
+            'manufacturer_name'    => $heo_manufacturer ?: null,
+            'id_manufacturer'      => $id_manufacturer,            
             'imagenes'             => array_filter($imagenes),
-            'fuente'               => $this->config['tipo']
+            'fuente'               => $this->config['tipo'],
+            'ignorar'              => $ignorar
         ];
-    }
+    }    
 
     protected function getManufacturerId($nombre)
     {
-        if (!$nombre) {
+        if (!$nombre) {            
             return null;
         }
 
-        // 1. Buscar si ya existe un fabricante con ese nombre
-        $id = Manufacturer::getIdByName($nombre);
+        // Buscar si ya existe un fabricante con ese nombre (insensible a mayúsculas/minúsculas)
+        $id = Db::getInstance()->getValue('
+            SELECT id_manufacturer 
+            FROM '._DB_PREFIX_.'manufacturer 
+            WHERE LOWER(name) = "'.pSQL(strtolower($nombre)).'"
+        ');
         if ($id) {
             return (int) $id;
         }
-        // else {return 9999;}
 
-        // 2. Si no existe, crearlo
-        $manufacturer = new Manufacturer();
-        $manufacturer->name = $nombre;
-        $manufacturer->active = 1;
-
-        foreach (Language::getLanguages(false) as $lang) {
-            $manufacturer->description[$lang['id_lang']] = '';
-            $manufacturer->short_description[$lang['id_lang']] = '';
-            $manufacturer->meta_title[$lang['id_lang']] = $nombre;
-            $manufacturer->meta_description[$lang['id_lang']] = '';
-            $manufacturer->meta_keywords[$lang['id_lang']] = '';
-        }
-
-        if ($manufacturer->add()) {
-            $this->logger->log("Fabricante creado: $nombre (ID ".$manufacturer->id.")", 'INFO');
-            return (int) $manufacturer->id;
-        } else {
-            $this->logger->log("Error al crear fabricante: $nombre", 'ERROR');
-            return null;
-        }
+        return null;
     }
 
 }

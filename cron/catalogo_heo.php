@@ -6,7 +6,9 @@ require_once _PS_MODULE_DIR_.'frikimportproductos/classes/readers/HeoReader.php'
 require_once _PS_MODULE_DIR_.'frikimportproductos/classes/CatalogImporter.php';
 require_once _PS_ROOT_DIR_.'/classes/utils/LoggerFrik.php';
 
-// https://lafrikileria.com/modules/frikimportproductos/cron/test_heo.php
+// https://lafrikileria.com/modules/frikimportproductos/cron/catalogo_heo.php
+
+//el proceso se ejecutará una vez al día, descargando el catálogo completo de Heo, e insertando/actualizando las entradas en lafrips_productos_proveedores
 
 $idSupplier = 4; // HEO
 $logger = new LoggerFrik(_PS_MODULE_DIR_.'frikimportproductos/logs/heo/heo_import.log', true, 'sergio@lafrikileria.com');
@@ -65,9 +67,12 @@ try {
     $resultado = $importer->saveProducts($productos);
 
     echo "Importación terminada<br>";
+    echo "Procesados: {$resultado['procesados']}<br>";
     echo "Insertados: {$resultado['insertados']}<br>";
     echo "Actualizados: {$resultado['actualizados']}<br>";
     echo "Errores: {$resultado['errores']}<br>";
+    echo "Eliminados: {$resultado['eliminados']}<br>";
+    echo "Ignorados: {$resultado['ignorados']}<br>";
 
 } catch (Exception $e) {
     $logger->log("Excepción en cron Heo: ".$e->getMessage(), 'ERROR');

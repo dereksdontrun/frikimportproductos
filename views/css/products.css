@@ -283,6 +283,12 @@
   font-size: 12px;
 }
 
+.dropdown-btn.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #ddd;
+}
+
 .dropdown-content {
   display: none;
   position: absolute;
