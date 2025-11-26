@@ -73,7 +73,7 @@ class RedstringReader extends AbstractCatalogReader
     /**
      * Constructor
      *
-     * @param int        $id_supplier  id_supplier Redstring (24 en tu caso)
+     * @param int        $id_supplier  id_supplier Redstring (24)
      * @param LoggerFrik $logger
      *
      * @throws Exception
