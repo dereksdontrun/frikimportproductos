@@ -397,10 +397,7 @@ class KaractermaniaReader extends AbstractCatalogReader
 
         // Fabricante en Prestashop. Aunque se llamen Oh my Pop!, PRODG, Forecer Ninette, son todos Karactermanía ¿?
         $id_manufacturer = 47;
-        $manufacturer_name = "Karactermanía";
-        // if ($manufacturer_name) {
-        //     $id_manufacturer = $this->getManufacturerId($manufacturer_name);
-        // }
+        $manufacturer_name = "Karactermanía";        
 
         // ignorar: de momento 0
         $ignorar = 0;
@@ -453,23 +450,6 @@ class KaractermaniaReader extends AbstractCatalogReader
         }
 
         return $convertido;
-    }
-
-
-    //en principio no se usa al ser Karactermanía
-    protected function getManufacturerId($nombre)
-    {
-        if (!$nombre) {
-            return null;
-        }
-
-        $id = Db::getInstance()->getValue('
-            SELECT id_manufacturer
-            FROM ' . _DB_PREFIX_ . 'manufacturer
-            WHERE LOWER(name) = "' . pSQL(strtolower($nombre)) . '"
-        ');
-
-        return $id ? (int) $id : null;
     }
 
 }

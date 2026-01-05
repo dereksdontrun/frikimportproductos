@@ -2,6 +2,7 @@
 
 require_once(_PS_MODULE_DIR_ . 'frikimportproductos/classes/AbstractCatalogReader.php');
 require_once _PS_ROOT_DIR_ . '/classes/utils/LoggerFrik.php';
+require_once _PS_MODULE_DIR_ . 'frikimportproductos/classes/ManufacturerAliasHelper.php';
 
 require_once(_PS_MODULE_DIR_ . 'frikimportproductos/utils/SimpleXLS/src/SimpleXLS.php');
 
@@ -799,6 +800,13 @@ class RedstringReader extends AbstractCatalogReader
             //en este catálogo de moemnto no tenemos url de producto, vamos a meter la url a la web de redstring
             $url_proveedor = 'https://www.redstring.es/home-h-1-50/';
 
+            // buscamos el fabricante por su nombre para ver si existe, en cuyo caso obtenemos su id. Si no existe o no hay nombre de fabricante, id_manufacturer queda null y se creará al crear el producto
+            $id_manufacturer = null;
+            if ($marca) {
+                //si devuelve null quedará como pending y cuando se cree el producto se volverá a intentar resolver el nombre. Habrá que crear el alias asignado a un fabricante o crear un nuevo fabricante
+                $id_manufacturer = ManufacturerAliasHelper::resolveName($marca, 'Redstring');
+            }
+
             // No tenemos coste ni pvp aquí, se actualiza desde el CSV de servidor
             $productos[] = [
                 'referencia_proveedor' => $ref,
@@ -811,7 +819,7 @@ class RedstringReader extends AbstractCatalogReader
                 'disponibilidad' => $disponible,
                 'description_short' => $descripcion,
                 'manufacturer_name' => $marca ?: null,
-                'id_manufacturer' => $this->getManufacturerId($marca),
+                'id_manufacturer' => $id_manufacturer,
                 'imagenes' => $imagenes,
                 'fuente' => $this->config_web['tipo'] . '-' . $this->config_ftp['tipo'],
                 'ignorar' => 0,
@@ -1052,21 +1060,6 @@ class RedstringReader extends AbstractCatalogReader
 
         // Minúsculas
         return mb_strtolower($texto, 'UTF-8');
-    }
-
-    protected function getManufacturerId($nombre)
-    {
-        if (!$nombre) {
-            return null;
-        }
-
-        $id = Db::getInstance()->getValue('
-            SELECT id_manufacturer
-            FROM ' . _DB_PREFIX_ . 'manufacturer
-            WHERE LOWER(name) = "' . pSQL(strtolower($nombre)) . '"
-        ');
-
-        return $id ? (int) $id : null;
     }
 
     /* ============================================================

@@ -1,7 +1,8 @@
 <?php
 
-require_once _PS_ROOT_DIR_.'/classes/utils/LoggerFrik.php';
-require_once _PS_ROOT_DIR_.'/controllers/admin/AdminImportController.php'; //para el proceso de imágenes
+require_once _PS_ROOT_DIR_ . '/classes/utils/LoggerFrik.php';
+require_once _PS_ROOT_DIR_ . '/controllers/admin/AdminImportController.php'; //para el proceso de imágenes
+require_once _PS_MODULE_DIR_ . 'frikimportproductos/classes/ManufacturerAliasHelper.php';
 
 class CreaProducto
 {
@@ -16,15 +17,17 @@ class CreaProducto
     //una categoría principal por defecto. 2920 importados completo
     protected $id_category_default = 2920;
 
-    protected $log_file = _PS_ROOT_DIR_.'/modules/frikimportproductos/logs/crear_manual.log';
+    protected $id_fabricante_provisional = 846;
+
+    protected $log_file = _PS_ROOT_DIR_ . '/modules/frikimportproductos/logs/crear_manual.log';
 
     public function __construct(LoggerFrik $logger = null)
-    {        
+    {
         if ($logger) {
             $this->logger = $logger;
         } else {
             $this->logger = new LoggerFrik($this->log_file);
-        }        
+        }
     }
 
     /**
@@ -38,13 +41,13 @@ class CreaProducto
             $this->origen = $origen;
 
             $this->logger->log("---------------------------------------------------------", 'INFO');
-            $this->logger->log("Iniciando creación de producto #$id_productos_proveedores, Origen: ".strtoupper($this->origen), 'INFO');
+            $this->logger->log("Iniciando creación de producto #$id_productos_proveedores, Origen: " . strtoupper($this->origen), 'INFO');
 
             $ref = addslashes($datos['referencia_proveedor'] ?? '');
             $ean = addslashes($datos['ean'] ?? '');
             // comprobar duplicados
             $id_existente = $this->existeEnPrestashop($datos);
-            if ($id_existente) {                
+            if ($id_existente) {
                 $msg = "El producto ya existe en PrestaShop (ref={$ref}, ean={$ean}, id_productos_proveedores=$id_productos_proveedores), con id_product=$id_existente";
                 $this->logger->log($msg, 'ERROR');
                 $this->logAccion($id_productos_proveedores, 'crear', 'error', $msg);
@@ -56,18 +59,27 @@ class CreaProducto
                 return ['success' => false, 'message' => $msg];
             }
 
-            //el fabricante puede que lo conozcamos o no, si  viene id_manufacturer se lo asignamos, si no buscamos por coincidencia del nombre, si no se encuentra se crea uno nuevo. Si no hay id ni nombre, asignamos Otros fabricantes
+            //el fabricante puede que lo conozcamos o no, si  viene id_manufacturer se lo asignamos, si no , tratamos de resolver el nombre, si no se consigue, o no hay nombre de fabricante, asignamos Fabricante provisional, cuando se revise, si finalmente no se sabe qué fabricante tiene, pondremos Otros fabricantes
             $id_manufacturer = $datos['id_manufacturer'];
-            if (!$id_manufacturer) {
-                $id_manufacturer = $this->getManufacturerId($datos['manufacturer_name']);
+            if (!$id_manufacturer) {                
+
+                if ($datos['manufacturer_name']) {
+                    //si devuelve null quedará el nombre como pending y al producto se le asignará Fabricante provisional
+                    $id_manufacturer = ManufacturerAliasHelper::resolveName($datos['manufacturer_name'], 'CREAR_PRODUCTO');
+                }
+
+                //si no se consigue un fabricante, asignamos temporalmente a Fabricante provisional (id_manufacturer = 846)
+                if (!$id_manufacturer) {   
+                    $id_manufacturer = $this->id_fabricante_provisional;
+                }                
             }
 
             //comprobamos iva, si no hay aplicamos 21
-            $iva = $datos['iva'] ? (int)$datos['iva'] : 21;
+            $iva = $datos['iva'] ? (int) $datos['iva'] : 21;
 
-            $pvp_sin_iva = $this->calculaPvpRecomendado((float)$datos['coste'], $id_manufacturer, $iva);
+            $pvp_sin_iva = $this->calculaPvpRecomendado((float) $datos['coste'], $id_manufacturer, $iva);
 
-            if (!$pvp_sin_iva) {                
+            if (!$pvp_sin_iva) {
                 $msg = "No pudo calcularse el PVP sin IVA para producto (ref={$ref}, ean={$ean}, id_productos_proveedores=$id_productos_proveedores)";
                 $this->logger->log($msg, 'ERROR');
                 $this->logAccion($id_productos_proveedores, 'crear', 'error', $msg);
@@ -94,38 +106,38 @@ class CreaProducto
             //revisamos las longitudes de textos y truncamos si es necesario
             $nombre = $this->truncarCampo($datos['nombre'] ?? '', 128, 'name', $ref);
             $descripcion_corta = $this->truncarCampo($datos['description_short'] ?? '', 4000, 'description_short', $ref);
-            $ean = $this->truncarCampo($datos['ean'] ?? '', 13, 'ean13', $ref);            
-          
+            $ean = $this->truncarCampo($datos['ean'] ?? '', 13, 'ean13', $ref);
+
             // crear objeto producto
             $product = new Product();
             $product->reference = $this->generarReferenciaTemporal();
             $product->ean13 = $ean; //asignamos el ean que viene en el catálogo, pero para buscar duplicados usamos ean_norm
             $product->name = [Configuration::get('PS_LANG_DEFAULT') => $nombre]; // es como $product->name[1] = $nombre;
             $product->description_short = [Configuration::get('PS_LANG_DEFAULT') => $descripcion_corta];
-            $product->link_rewrite[1] = Tools::link_rewrite($nombre);        
-            $product->available_now = Tools::mensajeAvailable((int)$datos['id_supplier'])[0];
-            $product->available_later = Tools::mensajeAvailable((int)$datos['id_supplier'])[1];
-            $product->wholesale_price = (float)$datos['coste'];            
+            $product->link_rewrite[1] = Tools::link_rewrite($nombre);
+            $product->available_now = Tools::mensajeAvailable((int) $datos['id_supplier'])[0];
+            $product->available_later = Tools::mensajeAvailable((int) $datos['id_supplier'])[1];
+            $product->wholesale_price = (float) $datos['coste'];
             $product->id_tax_rules_group = $this->getIdTaxRulesGroup($iva);
-            $product->price = $pvp_sin_iva; 
-            $product->id_supplier = (int)$datos['id_supplier'];
+            $product->price = $pvp_sin_iva;
+            $product->id_supplier = (int) $datos['id_supplier'];
             $product->id_manufacturer = $id_manufacturer;
-            $product->weight = (float)$datos['peso'] ? (float)$datos['peso'] : 0.444;            
+            $product->weight = (float) $datos['peso'] ? (float) $datos['peso'] : 0.444;
             $product->redirect_type = '404';
-            $product->advanced_stock_management = 1;        
-            $product->visibility = 'both'; 
-            $product->active = 0;             
-            
+            $product->advanced_stock_management = 1;
+            $product->visibility = 'both';
+            $product->active = 0;
+
             try {
                 $product->add();
             } catch (Throwable $e) {
                 $exception = $e->getMessage();
                 $file = $e->getFile();
-                $line = $e->getLine(); 
+                $line = $e->getLine();
                 $code = $e->getCode();
-                
-                $msg = "Error haciendo product->add() para crear producto (ref={$ref}, ean={$ean}, id_productos_proveedores=$id_productos_proveedores) - Excepción:".$exception." - Exception thrown in ".$file." on line ".$line.": [Code ".$code."]";                   
-                
+
+                $msg = "Error haciendo product->add() para crear producto (ref={$ref}, ean={$ean}, id_productos_proveedores=$id_productos_proveedores) - Excepción:" . $exception . " - Exception thrown in " . $file . " on line " . $line . ": [Code " . $code . "]";
+
                 $this->logger->log($msg, 'ERROR');
                 $this->logAccion($id_productos_proveedores, 'crear', 'error', $msg);
 
@@ -134,13 +146,13 @@ class CreaProducto
                     $this->guardarErrorProducto($id_productos_proveedores, $msg);
                 }
 
-                return ['success' => false, 'message' => $msg];                
-            }                      
+                return ['success' => false, 'message' => $msg];
+            }
 
             $this->logger->log("Producto creado en PrestaShop con id_product={$product->id}", 'INFO');
 
             // asignar categoría principal (id_category_default)
-            $id_category_default = Configuration::get('FRIKIMPORTPROVEEDORES_CATEGORIA_DEFECTO') ? (int)Configuration::get('FRIKIMPORTPROVEEDORES_CATEGORIA_DEFECTO') : $this->id_category_default; //importados
+            $id_category_default = Configuration::get('FRIKIMPORTPROVEEDORES_CATEGORIA_DEFECTO') ? (int) Configuration::get('FRIKIMPORTPROVEEDORES_CATEGORIA_DEFECTO') : $this->id_category_default; //importados
             if ($id_category_default) {
                 $product->id_category_default = $id_category_default;
                 $product->update();
@@ -149,8 +161,8 @@ class CreaProducto
 
             // proveedor: insertar en product_supplier
             if (!$this->addProveedor($product->id, $datos)) {
-                $msg = "Error asignando proveedor ({$product->id_supplier}) a producto (ref={$ref}, ean={$ean}, id_productos_proveedores=$id_productos_proveedores)";                   
-                
+                $msg = "Error asignando proveedor ({$product->id_supplier}) a producto (ref={$ref}, ean={$ean}, id_productos_proveedores=$id_productos_proveedores)";
+
                 $this->logger->log($msg, 'ERROR');
                 $this->logAccion($id_productos_proveedores, 'crear', 'error', $msg);
 
@@ -165,8 +177,8 @@ class CreaProducto
 
             //asignar almacén
             if (!$this->addAlmacen($product->id)) {
-                $msg = "Error asignando almacén a producto (ref={$ref}, ean={$ean}, id_productos_proveedores=$id_productos_proveedores)";                   
-                
+                $msg = "Error asignando almacén a producto (ref={$ref}, ean={$ean}, id_productos_proveedores=$id_productos_proveedores)";
+
                 $this->logger->log($msg, 'ERROR');
                 $this->logAccion($id_productos_proveedores, 'crear', 'error', $msg);
 
@@ -181,8 +193,8 @@ class CreaProducto
 
             //configurar gestión stock avanzado
             if (!$this->addGestionStock($product->id)) {
-                $msg = "Error gestionando comportamiento de stock para producto (ref={$ref}, ean={$ean}, id_productos_proveedores=$id_productos_proveedores)";                   
-                
+                $msg = "Error gestionando comportamiento de stock para producto (ref={$ref}, ean={$ean}, id_productos_proveedores=$id_productos_proveedores)";
+
                 $this->logger->log($msg, 'ERROR');
                 $this->logAccion($id_productos_proveedores, 'crear', 'error', $msg);
 
@@ -210,23 +222,23 @@ class CreaProducto
                 }
 
                 return ['success' => false, 'message' => $msg];
-            }            
+            }
 
-            $msg = "Producto con referencia de proveedor $ref, de ".Supplier::getNameById($datos['id_supplier'])." creado correctamente con id_product ".$product->id." y referencia temporal ".$product->reference;
+            $msg = "Producto con referencia de proveedor $ref, de " . Supplier::getNameById($datos['id_supplier']) . " creado correctamente con id_product " . $product->id . " y referencia temporal " . $product->reference;
 
             $this->logger->log($msg, 'SUCCESS');
 
             // actualizar tabla productos_proveedores con creado si el origen es manual (controlador). Si viene de cola lo haremos allí para cada producto
             // if ($origen === 'manual') {
-                Db::getInstance()->update('productos_proveedores', [
-                    'existe_prestashop' => 1,
-                    'estado' => 'creado',
-                    'id_employee_creado' => $this->id_employee,
-                    'referencia_base_prestashop' => $product->reference,
-                    'id_product_prestashop' => (int)$product->id,
-                    'date_creado' => date('Y-m-d H:i:s'),
-                    'date_upd' => date('Y-m-d H:i:s'),
-                ], 'id_productos_proveedores = '.(int)$id_productos_proveedores);
+            Db::getInstance()->update('productos_proveedores', [
+                'existe_prestashop' => 1,
+                'estado' => 'creado',
+                'id_employee_creado' => $this->id_employee,
+                'referencia_base_prestashop' => $product->reference,
+                'id_product_prestashop' => (int) $product->id,
+                'date_creado' => date('Y-m-d H:i:s'),
+                'date_upd' => date('Y-m-d H:i:s'),
+            ], 'id_productos_proveedores = ' . (int) $id_productos_proveedores);
             // }
 
             $this->logAccion($id_productos_proveedores, 'crear', 'exito', 'Producto creado con éxito.', $product->id);
@@ -236,7 +248,7 @@ class CreaProducto
             return ['success' => true, 'id_product' => $product->id];
 
         } catch (Exception $e) {
-            $msg = "Error al crear producto: ".$e->getMessage();
+            $msg = "Error al crear producto: " . $e->getMessage();
             $this->logger->log($msg, 'ERROR');
             $this->logAccion($id_productos_proveedores, 'crear', 'error', $msg);
 
@@ -248,56 +260,56 @@ class CreaProducto
         }
     }
 
-    protected function getManufacturerId($nombre)
-    {
-        if (!$nombre) {
-            //si no hay nombre, devolvemos id 34, Otros Fabricantes
-            $this->logger->log("Nombre fabricante inválido: $nombre. Utilizamos 'Otros fabricantes'", 'WARNING');
+    // protected function getManufacturerId($nombre)
+    // {
+    //     if (!$nombre) {
+    //         //si no hay nombre, devolvemos id 34, Otros Fabricantes
+    //         $this->logger->log("Nombre fabricante inválido: $nombre. Utilizamos 'Otros fabricantes'", 'WARNING');
 
-            return 34;
-        }
+    //         return 34;
+    //     }
 
-        // $excluir = ['GENERIC', 'VARIOS', 'NO BRAND', 'SIN MARCA'];
-        // if (in_array(strtoupper($nombre), $excluir)) {
-        //     return 34;
-        // }
+    //     // $excluir = ['GENERIC', 'VARIOS', 'NO BRAND', 'SIN MARCA'];
+    //     // if (in_array(strtoupper($nombre), $excluir)) {
+    //     //     return 34;
+    //     // }
 
-        // 1. Buscar si ya existe un fabricante con ese nombre (insensible a mayúsculas/minúsculas)
-        $id = Db::getInstance()->getValue('
-            SELECT id_manufacturer 
-            FROM '._DB_PREFIX_.'manufacturer 
-            WHERE LOWER(name) = "'.pSQL(strtolower($nombre)).'"
-        ');
-        if ($id) {
-            return (int) $id;
-        }
-        // else {return 9999;}
+    //     // 1. Buscar si ya existe un fabricante con ese nombre (insensible a mayúsculas/minúsculas)
+    //     $id = Db::getInstance()->getValue('
+    //         SELECT id_manufacturer 
+    //         FROM ' . _DB_PREFIX_ . 'manufacturer 
+    //         WHERE LOWER(name) = "' . pSQL(strtolower($nombre)) . '"
+    //     ');
+    //     if ($id) {
+    //         return (int) $id;
+    //     }
+    //     // else {return 9999;}
 
-        // 2. Si no existe, crearlo
-        $manufacturer = new Manufacturer();
-        $manufacturer->name = $nombre;
-        $manufacturer->active = 1;
-        $manufacturer->date_add = date('Y-m-d H:i:s');
-        $manufacturer->date_upd = date('Y-m-d H:i:s');
+    //     // 2. Si no existe, crearlo
+    //     $manufacturer = new Manufacturer();
+    //     $manufacturer->name = $nombre;
+    //     $manufacturer->active = 1;
+    //     $manufacturer->date_add = date('Y-m-d H:i:s');
+    //     $manufacturer->date_upd = date('Y-m-d H:i:s');
 
-        foreach (Language::getLanguages(false) as $lang) {
-            $manufacturer->description[$lang['id_lang']] = '';
-            $manufacturer->short_description[$lang['id_lang']] = '';
-            $manufacturer->meta_title[$lang['id_lang']] = $nombre;
-            $manufacturer->meta_description[$lang['id_lang']] = '';
-            $manufacturer->meta_keywords[$lang['id_lang']] = '';
-        }
+    //     foreach (Language::getLanguages(false) as $lang) {
+    //         $manufacturer->description[$lang['id_lang']] = '';
+    //         $manufacturer->short_description[$lang['id_lang']] = '';
+    //         $manufacturer->meta_title[$lang['id_lang']] = $nombre;
+    //         $manufacturer->meta_description[$lang['id_lang']] = '';
+    //         $manufacturer->meta_keywords[$lang['id_lang']] = '';
+    //     }
 
-        if ($manufacturer->add()) {
-            $this->logger->log("Fabricante creado: $nombre (ID ".$manufacturer->id.")", 'INFO');
+    //     if ($manufacturer->add()) {
+    //         $this->logger->log("Fabricante creado: $nombre (ID " . $manufacturer->id . ")", 'INFO');
 
-            return (int) $manufacturer->id;
-        } else {
-            $this->logger->log("Error al crear fabricante: $nombre. Utilizamos 'Otros fabricantes'", 'ERROR');
+    //         return (int) $manufacturer->id;
+    //     } else {
+    //         $this->logger->log("Error al crear fabricante: $nombre. Utilizamos 'Otros fabricantes'", 'ERROR');
 
-            return 34;
-        }
-    }
+    //         return 34;
+    //     }
+    // }
 
     /**
      * Trunca un texto (descripción, nombre etc con su límite de longitud) y registra el evento si supera el límite.
@@ -318,25 +330,25 @@ class CreaProducto
     {
         //Asignar proveedor, se asigna como producto base, si se crean los atributos se generará cada uno
         $product_supplier = new ProductSupplier();
-        $product_supplier->id_product = (int)$id_product;
+        $product_supplier->id_product = (int) $id_product;
         $product_supplier->id_product_attribute = 0;
-        $product_supplier->id_supplier = (int)$datos['id_supplier'];
+        $product_supplier->id_supplier = (int) $datos['id_supplier'];
         //si es producto sin atributos asignamos aquí la referencia de proveedor - POR AHORA NO
         // if ($this->es_atributo) {
         //     $product_supplier->product_supplier_reference = '';
         // } else {
         //     $product_supplier->product_supplier_reference = pSQL($datos['referencia_proveedor']);
         // }     
-        $product_supplier->product_supplier_reference = pSQL($datos['referencia_proveedor']);   
-        $product_supplier->product_supplier_price_te = (float)$datos['coste']; 
-        $product_supplier->id_currency = (int)Configuration::get('PS_CURRENCY_DEFAULT');
+        $product_supplier->product_supplier_reference = pSQL($datos['referencia_proveedor']);
+        $product_supplier->product_supplier_price_te = (float) $datos['coste'];
+        $product_supplier->id_currency = (int) Configuration::get('PS_CURRENCY_DEFAULT');
 
         if ($product_supplier->save()) {
             $this->logger->log("Proveedor añadido a product_supplier (id_product=$id_product)", 'INFO');
             return true;
-        }    
-        
-        return false;        
+        }
+
+        return false;
     }
 
     /**
@@ -376,7 +388,7 @@ class CreaProducto
         foreach ($imagenes as $i => $url) {
             try {
                 $image = new Image();
-                $image->id_product = (int)$id_product;
+                $image->id_product = (int) $id_product;
                 $image->position = $i + 1;
                 $image->cover = ($i === 0);
 
@@ -403,7 +415,7 @@ class CreaProducto
                 $resultados['ok'][] = $url;
 
             } catch (Exception $e) {
-                $msg = "Error al importar imagen $url → ".$e->getMessage();
+                $msg = "Error al importar imagen $url → " . $e->getMessage();
                 $this->logger->log($msg, 'ERROR');
                 $resultados['errores'][] = $msg;
 
@@ -433,16 +445,16 @@ class CreaProducto
             case 'products':
                 $image_obj = new Image($id_image);
                 $path = $image_obj->getPathForCreation();
-            break;
+                break;
             case 'categories':
-                $path = _PS_CAT_IMG_DIR_.(int)$id_entity;
-            break;
+                $path = _PS_CAT_IMG_DIR_ . (int) $id_entity;
+                break;
             case 'manufacturers':
-                $path = _PS_MANU_IMG_DIR_.(int)$id_entity;
-            break;
+                $path = _PS_MANU_IMG_DIR_ . (int) $id_entity;
+                break;
             case 'suppliers':
-                $path = _PS_SUPP_IMG_DIR_.(int)$id_entity;
-            break;
+                $path = _PS_SUPP_IMG_DIR_ . (int) $id_entity;
+                break;
         }
 
         $url = urldecode(trim($url));
@@ -455,7 +467,7 @@ class CreaProducto
                 $part = rawurlencode($part);
             }
             unset($part);
-            $parced_url['path'] = '/'.implode('/', $parts);
+            $parced_url['path'] = '/' . implode('/', $parts);
         }
 
         if (isset($parced_url['query'])) {
@@ -465,7 +477,7 @@ class CreaProducto
         }
 
         if (!function_exists('http_build_url')) {
-            require_once(_PS_TOOL_DIR_.'http_build_url/http_build_url.php');
+            require_once(_PS_TOOL_DIR_ . 'http_build_url/http_build_url.php');
         }
 
         $url = http_build_url('', $parced_url);
@@ -504,13 +516,13 @@ class CreaProducto
 
             // ImageManager::resize($tmpfile, $path.'.jpg', null, null, 'jpg', false, $error, $tgt_width, $tgt_height, 5,
             //                     $src_width, $src_height);
-            ImageManager::resize($tmpfile, $path.'.jpg', null, null, 'jpg');
+            ImageManager::resize($tmpfile, $path . '.jpg', null, null, 'jpg');
             $images_types = ImageType::getImagesTypes($entity, true);
 
             if ($regenerate) {
                 $previous_path = null;
                 $path_infos = array();
-                $path_infos[] = array($tgt_width, $tgt_height, $path.'.jpg');
+                $path_infos[] = array($tgt_width, $tgt_height, $path . '.jpg');
                 foreach ($images_types as $image_type) {
                     //en AdminImportcontroller aquí utiliza self::get_best_path pero como no estamos en ese controlador, he traido la función get_best_path() justo debajo de esta
                     $tmpfile = $this->get_best_path($image_type['width'], $image_type['height'], $path_infos);
@@ -520,18 +532,25 @@ class CreaProducto
                     // if (ImageManager::resize($tmpfile, $path.'-'.stripslashes($image_type['name']).'.jpg', $image_type['width'],
                     //                     $image_type['height'], 'jpg', false, $error, $tgt_width, $tgt_height, 5,
                     //                     $src_width, $src_height)) {
-                    if (ImageManager::resize($tmpfile, $path.'-'.stripslashes($image_type['name']).'.jpg', $image_type['width'],
-                        $image_type['height'], 'jpg')) {
+                    if (
+                        ImageManager::resize(
+                            $tmpfile,
+                            $path . '-' . stripslashes($image_type['name']) . '.jpg',
+                            $image_type['width'],
+                            $image_type['height'],
+                            'jpg'
+                        )
+                    ) {
                         // the last image should not be added in the candidate list if it's bigger than the original image
                         if ($tgt_width <= $src_width && $tgt_height <= $src_height) {
-                            $path_infos[] = array($tgt_width, $tgt_height, $path.'-'.stripslashes($image_type['name']).'.jpg');
+                            $path_infos[] = array($tgt_width, $tgt_height, $path . '-' . stripslashes($image_type['name']) . '.jpg');
                         }
                         if ($entity == 'products') {
-                            if (is_file(_PS_TMP_IMG_DIR_.'product_mini_'.(int)$id_entity.'.jpg')) {
-                            unlink(_PS_TMP_IMG_DIR_.'product_mini_'.(int)$id_entity.'.jpg');
+                            if (is_file(_PS_TMP_IMG_DIR_ . 'product_mini_' . (int) $id_entity . '.jpg')) {
+                                unlink(_PS_TMP_IMG_DIR_ . 'product_mini_' . (int) $id_entity . '.jpg');
                             }
-                            if (is_file(_PS_TMP_IMG_DIR_.'product_mini_'.(int)$id_entity.'_'.(int)Context::getContext()->shop->id.'.jpg')) {
-                            unlink(_PS_TMP_IMG_DIR_.'product_mini_'.(int)$id_entity.'_'.(int)Context::getContext()->shop->id.'.jpg');
+                            if (is_file(_PS_TMP_IMG_DIR_ . 'product_mini_' . (int) $id_entity . '_' . (int) Context::getContext()->shop->id . '.jpg')) {
+                                unlink(_PS_TMP_IMG_DIR_ . 'product_mini_' . (int) $id_entity . '_' . (int) Context::getContext()->shop->id . '.jpg');
                             }
                         }
                     }
@@ -561,11 +580,12 @@ class CreaProducto
             }
         }
         return $path;
-    }    
+    }
 
 
     //función que obtiene el id_tax_rules_group a asignar al producto en función del iva, suponiendo que estamos en España peninsular
-    protected function getIdTaxRulesGroup($iva) {
+    protected function getIdTaxRulesGroup($iva)
+    {
         $sql_tax = 'SELECT trg.id_tax_rules_group
         FROM lafrips_tax_rules_group trg
         JOIN lafrips_tax_rule tar ON tar.id_tax_rules_group = trg.id_tax_rules_group
@@ -575,21 +595,22 @@ class CreaProducto
         AND tar.id_country = 6 
         AND tax.active = 1
         AND tax.deleted = 0
-        AND tax.rate = '.$iva;
+        AND tax.rate = ' . $iva;
 
-        return Db::getInstance()->getValue($sql_tax);   
+        return Db::getInstance()->getValue($sql_tax);
     }
 
     //función que devuelve el pvp o el pvp sin iva ajustado a un precio con iva redondeado, dado el iva, y el coste, buscando en lafrips_factor_coste_fabricante el factor por el fabricante y el rango de coste, si no existe (por falta de datos generalmente, o bien pocos productos de esas características) se pasa a buscar en lafrips_factor_coste_productos (medias de factores solo por rango) el factor por el que multiplicar el coste para obtener el pvp sin iva en bruto.
     //el campo $impuestos true o false indica si se devuelve pvp con o sin iva
-    protected function calculaPvpRecomendado($coste, $id_manufacturer, $iva = 21, $impuestos = false) {
+    protected function calculaPvpRecomendado($coste, $id_manufacturer, $iva = 21, $impuestos = false)
+    {
         // Buscamos el factor por fabricante
         $sql_factor_fabricante = '
             SELECT factor
             FROM lafrips_factor_coste_fabricante
-            WHERE id_manufacturer = '.(int)$id_manufacturer.'
-            AND coste_min <= '.(float)$coste.'
-            AND coste_max > '.(float)$coste;
+            WHERE id_manufacturer = ' . (int) $id_manufacturer . '
+            AND coste_min <= ' . (float) $coste . '
+            AND coste_max > ' . (float) $coste;
 
         $factor = Db::getInstance()->getValue($sql_factor_fabricante);
 
@@ -598,14 +619,15 @@ class CreaProducto
             $sql_general = '
                 SELECT factor
                 FROM lafrips_factor_coste_productos
-                WHERE coste_min <= '.(float)$coste.'
-                AND coste_max > '.(float)$coste;
+                WHERE coste_min <= ' . (float) $coste . '
+                AND coste_max > ' . (float) $coste;
 
             $factor = Db::getInstance()->getValue($sql_general);
         }
 
         // Si seguimos sin factor, podríamos poner un valor por defecto. Por ahora devolvemos 0 y se toma como error
-        if (!$factor) return 0;       
+        if (!$factor)
+            return 0;
 
         // PVP sin IVA inicial
         $pvp_sin_iva = $coste * $factor;
@@ -624,13 +646,14 @@ class CreaProducto
             $pvp_final = ceil($pvp_con_iva);
         }
 
-        if ($impuestos) return $pvp_final;
-        
+        if ($impuestos)
+            return $pvp_final;
+
         //ahora calculamos el nuevo pvp sin iva para obtener con el iva el pvp redondeado
         $pvp_sin_iva_final = $pvp_final / (1 + $iva / 100);
 
         // Redondear a 6 decimales
-        return round($pvp_sin_iva_final, 6); 
+        return round($pvp_sin_iva_final, 6);
     }
 
     /**
@@ -643,11 +666,11 @@ class CreaProducto
         if (!empty($datos['referencia_proveedor'])) {
             $id = Db::getInstance()->getValue('
                 SELECT ps.id_product 
-                FROM '._DB_PREFIX_.'product_supplier ps
-                WHERE ps.product_supplier_reference = "'.pSQL($datos['referencia_proveedor']).'"
+                FROM ' . _DB_PREFIX_ . 'product_supplier ps
+                WHERE ps.product_supplier_reference = "' . pSQL($datos['referencia_proveedor']) . '"
             ');
             if ($id) {
-                return (int)$id;
+                return (int) $id;
             }
         }
 
@@ -658,36 +681,37 @@ class CreaProducto
             // en product
             $id = Db::getInstance()->getValue('
                 SELECT p.id_product 
-                FROM '._DB_PREFIX_.'product p
+                FROM ' . _DB_PREFIX_ . 'product p
                 WHERE p.ean_norm <> ""
                 AND p.ean_norm <> "0000000000000" 
-                AND p.ean_norm = "'.$eanNorm.'"
+                AND p.ean_norm = "' . $eanNorm . '"
             ');
             if ($id) {
-                return (int)$id;
+                return (int) $id;
             }
 
             // en product_attribute
             $id = Db::getInstance()->getValue('
                 SELECT pa.id_product 
-                FROM '._DB_PREFIX_.'product_attribute pa
+                FROM ' . _DB_PREFIX_ . 'product_attribute pa
                 WHERE  pa.ean_norm <> ""
                 AND pa.ean_norm <> "0000000000000" 
-                AND pa.ean_norm = "'.$eanNorm.'"
+                AND pa.ean_norm = "' . $eanNorm . '"
             ');
             if ($id) {
-                return (int)$id;
+                return (int) $id;
             }
         }
 
         return null;
     }
 
-    protected function checkEan($ean) {
+    protected function checkEan($ean)
+    {
         //comprobamos que el campo ean contenga un ean
-        if (!$ean || $ean == ""|| $ean == "0000000000000" || !Validate::isEan13($ean)) {
+        if (!$ean || $ean == "" || $ean == "0000000000000" || !Validate::isEan13($ean)) {
             //Ean está vacío o no es un Ean'    
-            return false;            
+            return false;
         }
 
         return true;
@@ -697,46 +721,48 @@ class CreaProducto
     protected function logAccion($id_productos_proveedores, $accion, $resultado, $mensaje, $id_product = null)
     {
         Db::getInstance()->insert('productos_proveedores_log', [
-            'id_productos_proveedores' => (int)$id_productos_proveedores,
-            'id_employee' => (int)$this->id_employee,
+            'id_productos_proveedores' => (int) $id_productos_proveedores,
+            'id_employee' => (int) $this->id_employee,
             'accion' => pSQL($accion),
             'origen' => pSQL($this->origen),
             'resultado' => pSQL($resultado),
             'mensaje' => pSQL($mensaje),
-            'id_product_prestashop' => $id_product ? (int)$id_product : null,
+            'id_product_prestashop' => $id_product ? (int) $id_product : null,
             'date_add' => date('Y-m-d H:i:s'),
         ]);
     }
 
     //se guardará en frik_log_import_catalogos si se creó mediante el importador y su botón o encolado, guardando la persona que hizo una u otra cosa
-    protected function logImportCatalogos($id_product, $reference, $datos) {
-        $operacion = "Crear producto - Importador ".$this->origen;
+    protected function logImportCatalogos($id_product, $reference, $datos)
+    {
+        $operacion = "Crear producto - Importador " . $this->origen;
 
-        $user_nombre = Db::getInstance()->getValue('SELECT firstname FROM '._DB_PREFIX_.'employee WHERE id_employee = '.(int)$this->id_employee);
+        $user_nombre = Db::getInstance()->getValue('SELECT firstname FROM ' . _DB_PREFIX_ . 'employee WHERE id_employee = ' . (int) $this->id_employee);
 
         $nombre_proveedor = Supplier::getNameById($datos['id_supplier']);
 
         Db::getInstance()->Execute("INSERT INTO frik_log_import_catalogos
              (operacion, id_product, referencia_presta, ean, referencia_proveedor, id_proveedor, nombre_proveedor, user_id, user_nombre, date_add) 
              VALUES 
-             ('".$operacion."',
-             ".$id_product.",
-             '".$reference."',
-             '".$datos['ean']."',
-             '".$datos['referencia_proveedor']."',
-             ".$datos['id_supplier'].",
-             '".$nombre_proveedor."',
-             ".$this->id_employee.",
-             '".$user_nombre."', 
+             ('" . $operacion . "',
+             " . $id_product . ",
+             '" . $reference . "',
+             '" . $datos['ean'] . "',
+             '" . $datos['referencia_proveedor'] . "',
+             " . $datos['id_supplier'] . ",
+             '" . $nombre_proveedor . "',
+             " . $this->id_employee . ",
+             '" . $user_nombre . "', 
              NOW())");
-            
+
         return;
     }
 
     //función que con un id_product de Prestashop elimina el producto al que corresponde. La utilizamos para eliminar aquellos productos que han sido creados (addProduct()) pero el proceso ha fallado antes de finalizarlo, por ejemplo al subir imágenes, quedando sin añadir categorías o proveedor, que va después. De este modo limpiamos lo que creamos, en lugar de tener que repasar a mano.
-    protected function deleteProduct($id_product, $id_productos_proveedores = null) {
+    protected function deleteProduct($id_product, $id_productos_proveedores = null)
+    {
         try {
-            $product = new Product((int)$id_product);
+            $product = new Product((int) $id_product);
 
             if (!Validate::isLoadedObject($product)) {
                 $msg = "Intento de eliminar un producto inexistente id_product=$id_product";
@@ -756,7 +782,7 @@ class CreaProducto
                 }
                 return true;
             } else {
-                $msg = "Producto con error id_product=$id_product NO PUDO ELIMINARSE. DB error: ".Db::getInstance()->getMsgError();
+                $msg = "Producto con error id_product=$id_product NO PUDO ELIMINARSE. DB error: " . Db::getInstance()->getMsgError();
                 $this->logger->log($msg, 'ERROR');
                 if ($id_productos_proveedores) {
                     $this->logAccion($id_productos_proveedores, 'eliminar', 'error', $msg);
@@ -779,7 +805,7 @@ class CreaProducto
 
 
         } catch (Exception $e) {
-            $msg = "Excepción al eliminar id_product=$id_product → ".$e->getMessage();
+            $msg = "Excepción al eliminar id_product=$id_product → " . $e->getMessage();
             $this->logger->log($msg, 'ERROR');
             if ($id_productos_proveedores) {
                 $this->logAccion($id_productos_proveedores, 'eliminar', 'error', $msg);
@@ -788,7 +814,7 @@ class CreaProducto
         }
     }
 
-    
+
     protected function generarReferenciaTemporal()
     {
         $prefijo = 'ZZZ';
@@ -798,32 +824,33 @@ class CreaProducto
         $maxNum = Db::getInstance()->getValue('
             SELECT MAX(CAST(SUBSTRING(reference, 4) AS UNSIGNED)) 
             FROM (
-                SELECT reference FROM '._DB_PREFIX_.'product WHERE reference LIKE "ZZZ%"
+                SELECT reference FROM ' . _DB_PREFIX_ . 'product WHERE reference LIKE "ZZZ%"
                 UNION
-                SELECT reference FROM '._DB_PREFIX_.'product_attribute WHERE reference LIKE "ZZZ%"
+                SELECT reference FROM ' . _DB_PREFIX_ . 'product_attribute WHERE reference LIKE "ZZZ%"
             ) tmp
         ');
 
-        $siguiente = (int)$maxNum + 1;
+        $siguiente = (int) $maxNum + 1;
 
         // Formatear
-        $numero = str_pad((string)$siguiente, $longitudNumerica, '0', STR_PAD_LEFT);
+        $numero = str_pad((string) $siguiente, $longitudNumerica, '0', STR_PAD_LEFT);
 
         return $prefijo . $numero;
     }
 
     //dependiendo de si estamos con un producto con atributos hay que poner el almacén online por defecto al producto base o a los atributos. Por ahora solo generamos sin atributos
-    protected function addAlmacen($id_product) {
+    protected function addAlmacen($id_product)
+    {
         $product_warehouse = new WarehouseProductLocation();
         $product_warehouse->id_product = $id_product;
         $product_warehouse->id_product_attribute = 0;
-        $product_warehouse->id_warehouse = 1;            
-        
+        $product_warehouse->id_warehouse = 1;
+
         if ($product_warehouse->save()) {
             return true;
-        }   
+        }
 
-        return false;        
+        return false;
     }
 
     //Asignar que las cantidades disponibles se basen en gestión avanzada  
@@ -831,11 +858,12 @@ class CreaProducto
     //Marcamos no permitir pedidos (0 no permitir, 1 permitir, 2 por defecto) 
     //StockAvailable::setProductOutOfStock($id_product, $out_of_stock = false, $id_shop = null, $id_product_attribute = 0)    
     //con atributos habrá que ir atributo a atributo
-    public function addGestionStock($id_product) {    
+    public function addGestionStock($id_product)
+    {
         //primero al producto base, haya o no  atributos
         StockAvailable::setProductDependsOnStock($id_product, 1, 1, 0);
-        
-        StockAvailable::setProductOutOfStock($id_product, 2, 1, 0);        
+
+        StockAvailable::setProductOutOfStock($id_product, 2, 1, 0);
 
         return true;
     }
@@ -846,25 +874,25 @@ class CreaProducto
      */
     protected function guardarErrorProducto($id_productos_proveedores, $nuevo_error)
     {
-        $id_productos_proveedores = (int)$id_productos_proveedores;
+        $id_productos_proveedores = (int) $id_productos_proveedores;
         $nuevo_error = trim($nuevo_error);
 
         $mensaje_anterior = Db::getInstance()->getValue('
             SELECT mensaje_error 
             FROM lafrips_productos_proveedores 
-            WHERE id_productos_proveedores = '.$id_productos_proveedores
+            WHERE id_productos_proveedores = ' . $id_productos_proveedores
         );
 
         $mensaje_concatenado = trim(
-            ($mensaje_anterior ? $mensaje_anterior.' | ' : '') .
+            ($mensaje_anterior ? $mensaje_anterior . ' | ' : '') .
             date('[Y-m-d H:i:s] ') .
             $nuevo_error
         );
 
         Db::getInstance()->update('productos_proveedores', [
             'mensaje_error' => pSQL($mensaje_concatenado),
-            'date_upd'      => date('Y-m-d H:i:s')
-        ], 'id_productos_proveedores = '.$id_productos_proveedores);
+            'date_upd' => date('Y-m-d H:i:s')
+        ], 'id_productos_proveedores = ' . $id_productos_proveedores);
 
         $this->logger->log("Guardado error en producto #$id_productos_proveedores → $nuevo_error", 'ERROR');
     }

@@ -96,6 +96,19 @@
 
       <br><br>
 
+      <label>Buscar también en descripción:</label>
+      <span class="switch prestashop-switch">
+        <input type="radio" name="buscar_descripcion" id="desc_si" value="1">
+        <label for="desc_si">Si</label>
+        <input type="radio" name="buscar_descripcion" id="desc_no" value="0" checked>
+        <label for="desc_no">No</label>
+        <a class="slide-button btn"></a>
+      </span>
+
+    </div>
+
+    <!-- Botón buscar -->
+    <div class="form-group boton_buscar">
       <button type="button" id="btnBuscar" class="btn btn-primary">
         <i class="icon-search"></i> Buscar
       </button>

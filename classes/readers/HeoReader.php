@@ -1,7 +1,8 @@
 <?php
 
-require_once(_PS_MODULE_DIR_.'frikimportproductos/classes/AbstractCatalogReader.php');
-require_once _PS_ROOT_DIR_.'/classes/utils/LoggerFrik.php';
+require_once(_PS_MODULE_DIR_ . 'frikimportproductos/classes/AbstractCatalogReader.php');
+require_once _PS_ROOT_DIR_ . '/classes/utils/LoggerFrik.php';
+require_once _PS_MODULE_DIR_ . 'frikimportproductos/classes/ManufacturerAliasHelper.php';
 
 class HeoReader extends AbstractCatalogReader
 {
@@ -97,16 +98,16 @@ class HeoReader extends AbstractCatalogReader
     public function __construct($id_proveedor, LoggerFrik $logger)
     {
         $this->config = Db::getInstance()->getRow('
-            SELECT * FROM '._DB_PREFIX_.'import_proveedores 
-            WHERE id_supplier = '.(int)$id_proveedor
+            SELECT * FROM ' . _DB_PREFIX_ . 'import_proveedores 
+            WHERE id_supplier = ' . (int) $id_proveedor
         );
 
         if (!$this->config) {
-            throw new Exception('No se encontró configuración para el proveedor con ID '.$id_proveedor);
+            throw new Exception('No se encontró configuración para el proveedor con ID ' . $id_proveedor);
         }
 
         $this->logger = $logger;
-        $this->path_descarga = _PS_MODULE_DIR_.'frikimportproductos/import/heo/';
+        $this->path_descarga = _PS_MODULE_DIR_ . 'frikimportproductos/import/heo/';
     }
 
     /**
@@ -118,11 +119,11 @@ class HeoReader extends AbstractCatalogReader
         $password = $this->config['password'];
         $endpoint = $this->config['url'];
 
-        $cmd = 'curl -s -H "Authorization: Basic ' 
-            . base64_encode($username.':'.$password) 
-            . '" "'.$endpoint.'"';
+        $cmd = 'curl -s -H "Authorization: Basic '
+            . base64_encode($username . ':' . $password)
+            . '" "' . $endpoint . '"';
 
-        $this->logger->log('Ejecutando descarga Heo con comando: '.$cmd, 'INFO');
+        $this->logger->log('Ejecutando descarga Heo con comando: ' . $cmd, 'INFO');
 
         $response = shell_exec($cmd);
 
@@ -132,14 +133,14 @@ class HeoReader extends AbstractCatalogReader
         }
 
         $archivo = 'catalogo_completo_heo.txt';
-        $ruta_archivo = $this->path_descarga.$archivo;
+        $ruta_archivo = $this->path_descarga . $archivo;
 
         if (file_put_contents($ruta_archivo, $response) === false) {
-            $this->logger->log('Error guardando catálogo Heo en '.$ruta_archivo, 'ERROR');
+            $this->logger->log('Error guardando catálogo Heo en ' . $ruta_archivo, 'ERROR');
             return false;
         }
 
-        $this->logger->log('Catálogo Heo guardado correctamente en '.$ruta_archivo, 'INFO');
+        $this->logger->log('Catálogo Heo guardado correctamente en ' . $ruta_archivo, 'INFO');
 
         return $ruta_archivo;
     }
@@ -148,7 +149,7 @@ class HeoReader extends AbstractCatalogReader
     {
         $handle = fopen($filename, "r");
         if ($handle === false) {
-            $this->logger->log('Error abriendo archivo de catálogo '.$filename, 'ERROR');
+            $this->logger->log('Error abriendo archivo de catálogo ' . $filename, 'ERROR');
             return false;
         }
 
@@ -156,15 +157,16 @@ class HeoReader extends AbstractCatalogReader
 
         // número de columnas
         if (count($linea) != count($this->columnas_catalogo)) {
-            $this->logger->log('Número de columnas incorrecto: '.count($linea).' en vez de '.count($this->columnas_catalogo), 'ERROR');
+            $this->logger->log('Número de columnas incorrecto: ' . count($linea) . ' en vez de ' . count($this->columnas_catalogo), 'ERROR');
             return false;
         }
 
         // comprobar nombres de cabecera
         foreach ($linea as $i => $col) {
-            if ($i == 0) continue; // saltamos la primera
+            if ($i == 0)
+                continue; // saltamos la primera
             if (trim($col) != trim($this->columnas_catalogo[$i])) {
-                $this->logger->log("Columna $i incorrecta: '".trim($col)."' debería ser '".trim($this->columnas_catalogo[$i])."'", 'ERROR');
+                $this->logger->log("Columna $i incorrecta: '" . trim($col) . "' debería ser '" . trim($this->columnas_catalogo[$i]) . "'", 'ERROR');
                 return false;
             }
         }
@@ -194,35 +196,37 @@ class HeoReader extends AbstractCatalogReader
 
         fclose($handle);
 
-        $this->logger->log("Parseados ".count($productos)." productos de Heo", 'INFO');
+        $this->logger->log("Parseados " . count($productos) . " productos de Heo", 'INFO');
         return $productos;
     }
 
     public function normalizeRow($campos)
     {
         $referencia = trim($campos[0]);
-        if (!$referencia) return false;
+        if (!$referencia)
+            return false;
 
         $nombre = pSQL(trim($campos[4]));
-        if (!$nombre) return false;
+        if (!$nombre)
+            return false;
 
         $ean = trim($campos[35]) ?: '';
 
         $stock = trim($campos[63]);
-        $disponibilidad = in_array($stock, ['GREEN','YELLOW']) ? 1 : 0;
+        $disponibilidad = in_array($stock, ['GREEN', 'YELLOW']) ? 1 : 0;
 
-        $precio = str_replace(',','.',trim($campos[61])) ?: 0;
-        $packaging_quantity = (int)trim($campos[31]) ?: 1;
+        $precio = str_replace(',', '.', trim($campos[61])) ?: 0;
+        $packaging_quantity = (int) trim($campos[31]) ?: 1;
         $precio = round($precio / $packaging_quantity, 2);
 
         //en el caso de Heo, queremos ignorar los productos que no tengan packaging_quantity 1, para poder aplicar esto a otros catálogos (la posibilidad de enviar como ignorado), enviaremos una variable 'ignorar' 1 o 0 desde aquí.
         $ignorar = $packaging_quantity != 1 ? 1 : 0;
 
-        $pvp = str_replace(',','.',trim($campos[59])) ?: 0;
+        $pvp = str_replace(',', '.', trim($campos[59])) ?: 0;
 
         //ponemos peso volumétrico, para ello multiplicamos medidas del producto, longitud*anchura*altura y lo dividimos entre 6000000
         // $peso = trim($campos[16]) ? $campos[16]/1000 : 0.444;
-        $volumetrico = ROUND(((int)trim($campos[9])*(int)trim($campos[10])*(int)trim($campos[11]))/6000000);
+        $volumetrico = ROUND(((int) trim($campos[9]) * (int) trim($campos[10]) * (int) trim($campos[11])) / 6000000);
         $peso = $volumetrico ? $volumetrico : 0.444;
 
         // $imagen_principal = trim($campos[22]) ?: '';
@@ -241,63 +245,45 @@ class HeoReader extends AbstractCatalogReader
             $imagenes = array_merge($imagenes, explode(",", $adittional_images));
         }
 
-        $descripcion = pSQL(trim($campos[8])) ?: '';     
-        
-        $url_producto = 'https://www.heo.com/de/es/product/'.$referencia;
+        $descripcion = pSQL(trim($campos[8])) ?: '';
+
+        $url_producto = 'https://www.heo.com/de/es/product/' . $referencia;
 
         //Cogemos de varias columnas los valores categoria, tema, fabricante y tipo, que vienen con un código separado de : del valor que queremos
         $heo_categorie = explode(':', pSQL(trim($campos[40])))[1] ?? '';
         $heo_theme = explode(':', pSQL(trim($campos[44])))[1] ?? '';
-        $heo_manufacturer = explode(':', pSQL(trim($campos[48])))[1] ?? '';
+        $manufacturer_name = explode(':', pSQL(trim($campos[48])))[1] ?? '';
         $heo_type = explode(':', pSQL(trim($campos[52])))[1] ?? '';
 
-        $datos_heo = '<br>Categoria: '.$heo_categorie.'.<br>Tema: '.$heo_theme.'.<br>Fabricante: '.$heo_manufacturer.'.<br>Tipo: '.$heo_type.'.';       
-        
+        $datos_heo = '<br>Categoria: ' . $heo_categorie . '.<br>Tema: ' . $heo_theme . '.<br>Fabricante: ' . $manufacturer_name . '.<br>Tipo: ' . $heo_type . '.';
+
         $para_ia = '<br>Producto con licencia oficial.<br> Un artículo perfecto para un regalo original o para un capricho.';
 
-        $descripcion = $descripcion.$datos_heo.$para_ia;
+        $descripcion = $descripcion . $datos_heo . $para_ia;
 
         // buscamos el fabricante por su nombre para ver si existe, en cuyo caso obtenemos su id. Si no existe o no hay nombre de fabricante, id_manufacturer queda null y se creará al crear el producto
         $id_manufacturer = null;
-        if ($heo_manufacturer) {
-            $id_manufacturer = $this->getManufacturerId($heo_manufacturer);
-        }   
-        
+        if ($manufacturer_name) {           
+            //si devuelve null quedará como pending y cuando se cree el producto se volverá a intentar resolver el nombre. Habrá que crear el alias asignado a un fabricante o crear un nuevo fabricante
+            $id_manufacturer = ManufacturerAliasHelper::resolveName($manufacturer_name, 'Heo');            
+        }
+
         return [
             'referencia_proveedor' => $referencia,
-            'url_proveedor'        => $url_producto,
-            'nombre'               => $nombre,
-            'ean'                  => $ean,
-            'coste'                => $precio,
-            'pvp_sin_iva'          => $pvp,
-            'peso'                 => $peso,            
-            'disponibilidad'       => $disponibilidad,
-            'description_short'    => $descripcion,
-            'manufacturer_name'    => $heo_manufacturer ?: null,
-            'id_manufacturer'      => $id_manufacturer,            
-            'imagenes'             => array_filter($imagenes),
-            'fuente'               => $this->config['tipo'],
-            'ignorar'              => $ignorar
+            'url_proveedor' => $url_producto,
+            'nombre' => $nombre,
+            'ean' => $ean,
+            'coste' => $precio,
+            'pvp_sin_iva' => $pvp,
+            'peso' => $peso,
+            'disponibilidad' => $disponibilidad,
+            'description_short' => $descripcion,
+            'manufacturer_name' => $manufacturer_name ?: null,
+            'id_manufacturer' => $id_manufacturer,
+            'imagenes' => array_filter($imagenes),
+            'fuente' => $this->config['tipo'],
+            'ignorar' => $ignorar
         ];
-    }    
-
-    protected function getManufacturerId($nombre)
-    {
-        if (!$nombre) {            
-            return null;
-        }
-
-        // Buscar si ya existe un fabricante con ese nombre (insensible a mayúsculas/minúsculas)
-        $id = Db::getInstance()->getValue('
-            SELECT id_manufacturer 
-            FROM '._DB_PREFIX_.'manufacturer 
-            WHERE LOWER(name) = "'.pSQL(strtolower($nombre)).'"
-        ');
-        if ($id) {
-            return (int) $id;
-        }
-
-        return null;
-    }
+    }   
 
 }

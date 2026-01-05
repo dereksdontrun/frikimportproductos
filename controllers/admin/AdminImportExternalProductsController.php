@@ -123,6 +123,7 @@ class AdminImportExternalProductsController extends ModuleAdminController
         $ocultar_existentes = 0,
         $ocultar_no_disponibles = 0,
         $search = '',
+        $buscar_descripcion = 0,
         $limit = 100,
         $estado = '',
         $coste_min = 0,
@@ -220,11 +221,18 @@ class AdminImportExternalProductsController extends ModuleAdminController
 
         if ($search) {
             $like = '%' . pSQL($search) . '%';
+
+            if ($buscar_descripcion) {
+                $descripcion = " OR pp.description_short LIKE '$like' ";
+            } else {
+                $descripcion = "";
+            }
+            
             $sql->where("(pp.nombre LIKE '$like' 
                 OR pp.referencia_proveedor LIKE '$like' 
-                OR pp.ean LIKE '$like' 
-                OR pp.description_short LIKE '$like'
-                OR pp.manufacturer_name LIKE '$like')");
+                OR pp.ean LIKE '$like'                 
+                OR pp.manufacturer_name LIKE '$like'
+                $descripcion)");
         }
 
         $sql->groupBy('pp.id_productos_proveedores');
@@ -325,6 +333,7 @@ class AdminImportExternalProductsController extends ModuleAdminController
         $ocultar_existentes = (int) Tools::getValue('ocultar_existentes');
         $ocultar_no_disponibles = (int) Tools::getValue('ocultar_no_disponibles');
         $search = trim(Tools::getValue('search'));
+        $buscar_descripcion = (int) Tools::getValue('buscar_descripcion');
         $limit = (int) Tools::getValue('limit');
         $estado = Tools::getValue('estado', '');
         $coste_min = (float) Tools::getValue('coste_min');
@@ -337,6 +346,7 @@ class AdminImportExternalProductsController extends ModuleAdminController
             $ocultar_existentes,
             $ocultar_no_disponibles,
             $search,
+            $buscar_descripcion,
             $limit,
             $estado,
             $coste_min,

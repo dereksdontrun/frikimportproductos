@@ -313,20 +313,11 @@ class AbysseReader extends AbstractCatalogReader
         }
         if ($atributo) {
             $datos_extra .= '<br>Atributo: ' . $atributo . '.';
-        }
-        // if ($fabricante) {
-        //     $datos_extra .= '<br>Fabricante: ' . $fabricante . '.';
-        // }
+        }        
 
         $para_ia = '<br>Producto con licencia oficial.<br> Un artículo perfecto para un regalo original o para un capricho.';
 
-        $descripcion = pSQL($descripcion . $datos_extra . $para_ia);
-
-        // buscamos el fabricante por su nombre para ver si existe
-        // $id_manufacturer = null;
-        // if ($fabricante) {
-        //     $id_manufacturer = $this->getManufacturerId($fabricante);
-        // }
+        $descripcion = pSQL($descripcion . $datos_extra . $para_ia);        
 
         // ===== URLS DE ABYSSE =====
         $url_imagen = 'http://emailing.abyssecorp.com/' . urlencode($referencia) . '.jpg';
@@ -390,25 +381,5 @@ class AbysseReader extends AbstractCatalogReader
         // trim + minúsculas
         return mb_strtolower(trim($texto), 'UTF-8');
     }
-
-    /**
-     * Igual que en HeoReader: busca id_manufacturer por nombre
-     */
-    protected function getManufacturerId($nombre)
-    {
-        if (!$nombre) {
-            return null;
-        }
-
-        $id = Db::getInstance()->getValue('
-            SELECT id_manufacturer
-            FROM ' . _DB_PREFIX_ . 'manufacturer
-            WHERE LOWER(name) = "' . pSQL(strtolower($nombre)) . '"
-        ');
-        if ($id) {
-            return (int) $id;
-        }
-
-        return null;
-    }
+    
 }

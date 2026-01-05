@@ -2,6 +2,7 @@
 
 require_once(_PS_MODULE_DIR_.'frikimportproductos/classes/AbstractCatalogReader.php');
 require_once _PS_ROOT_DIR_.'/classes/utils/LoggerFrik.php';
+require_once _PS_MODULE_DIR_ . 'frikimportproductos/classes/ManufacturerAliasHelper.php';
 
 class MegasurReader extends AbstractCatalogReader
 {
@@ -233,8 +234,9 @@ class MegasurReader extends AbstractCatalogReader
         
         // buscamos el fabricante por su nombre para ver si existe, en cuyo caso obtenemos su id. Si no existe o no hay nombre de fabricante, id_manufacturer queda null y se creará al crear el producto
         $id_manufacturer = null;
-        if ($manufacturer_name) {
-            $id_manufacturer = $this->getManufacturerId($manufacturer_name);
+        if ($manufacturer_name) {           
+            //si devuelve null quedará como pending y cuando se cree el producto se volverá a intentar resolver el nombre. Habrá que crear el alias asignado a un fabricante o crear un nuevo fabricante
+            $id_manufacturer = ManufacturerAliasHelper::resolveName($manufacturer_name, 'Megasur');  
         }   
 
         $subfamilia = trim($campos[array_search("SUBFAMILIA", $this->columnas_catalogo)]) ?: '';      
@@ -280,26 +282,7 @@ class MegasurReader extends AbstractCatalogReader
             'ignorar'              => $ignorar
         ];
     }
-
-    protected function getManufacturerId($nombre)
-    {
-        if (!$nombre) {            
-            return null;
-        }
-
-        // Buscar si ya existe un fabricante con ese nombre (insensible a mayúsculas/minúsculas)
-        $id = Db::getInstance()->getValue('
-            SELECT id_manufacturer 
-            FROM '._DB_PREFIX_.'manufacturer 
-            WHERE LOWER(name) = "'.pSQL(strtolower($nombre)).'"
-        ');
-        if ($id) {
-            return (int) $id;
-        }
-
-        return null;
-    }
-
+    
     //esta función recibe la url de la imagen principal y devuelve un array con dicha imagen y hasta 15 urls más
     protected function generarImagenesMegasur($url_imagen_principal)
     {
@@ -316,7 +299,6 @@ class MegasurReader extends AbstractCatalogReader
         }
 
         return $imagenes;
-    }
-   
+    }  
 
 }
